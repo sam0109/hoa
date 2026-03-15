@@ -2,7 +2,7 @@
 
 ## Phase 0: Foundation
 
-The absolute minimum to run an adaptive-depth hierarchy with logging.
+The absolute minimum to bootstrap a target repo, spawn agents in it, and observe what happens.
 
 - [ ] **Project scaffolding**
   - [ ] Initialize Python project with pyproject.toml (Python 3.11+), managed by uv
@@ -11,15 +11,26 @@ The absolute minimum to run an adaptive-depth hierarchy with logging.
   - [ ] Set up Click or Typer for CLI framework
   - [ ] Establish directory structure per README (`src/hoa/` layout)
 
+- [ ] **`hoa init` — Target repo bootstrap**
+  - [ ] Interactive prompts: project name, description, language/stack, GitHub org, visibility (public/private)
+  - [ ] Create GitHub repo via `gh repo create`
+  - [ ] Run setup-github.sh against the new repo (labels, branch protection, templates, repo settings)
+  - [ ] Generate and commit AGENTS.md from template (Jinja2) — agent workflow customized to the project's stack
+  - [ ] Generate and commit CLAUDE.md from template — Claude Code instructions with project-specific rules
+  - [ ] Generate and commit CI pipeline from template — language-appropriate linting, testing, type checking
+  - [ ] Generate and commit sandbox Dockerfile from template — agent execution environment with required tooling
+  - [ ] Generate and commit docker-compose.yml from template — container orchestration for agent instances
+  - [ ] Store project config in HoA's local state (repo URL, stack, guardrails applied, run history)
+
 - [ ] **Inspection layer (core)**
-  - [ ] Define structured log schema (JSON) — must capture: agent ID, tier, timestamp, event type, full payload
-  - [ ] Implement file-based structured logger (write logs to `./hoa-logs/`)
+  - [ ] Define structured log schema (JSON) — must capture: agent ID, tier, target repo, timestamp, event type, full payload
+  - [ ] Implement file-based structured logger (write logs to `~/.hoa/logs/<project>/`)
   - [ ] Log rotation and retention policy
-  - [ ] Implement basic trace viewer CLI (`hoa inspect <run-id>`)
+  - [ ] Implement basic trace viewer CLI (`hoa inspect --repo <repo> <run-id>`)
   - [ ] Ensure every subsequent component logs through this layer from day one
 
 - [ ] **Agent lifecycle (minimal)**
-  - [ ] Implement `spawn` — launch a Claude Code instance with a task prompt and permissions manifest
+  - [ ] Implement `spawn` — launch a Claude Code instance in a sandbox container against the target repo
   - [ ] Implement `monitor` — poll/stream agent status
   - [ ] Implement `terminate` — graceful and forceful shutdown
   - [ ] Hook into CC to capture full input/output/tool-call telemetry
@@ -39,12 +50,20 @@ The absolute minimum to run an adaptive-depth hierarchy with logging.
   - [ ] Implement CLI tool: `hoa-msg recv` — agent polls for incoming messages
   - [ ] All messages logged to inspection layer with sender, receiver, timestamp, payload
 
-- [ ] **Basic hierarchy (adaptive-depth proof of concept)**
-  - [ ] Agent receives task, creates plan DAG, submits for approval
+- [ ] **`hoa run` — Basic orchestration (adaptive-depth proof of concept)**
+  - [ ] Accept a task description and target repo
+  - [ ] Tier 0 agent receives task, creates plan DAG, submits for human approval
   - [ ] Agent decides per-subtask: self-execute or delegate to sub-agent
+  - [ ] Sub-agents clone target repo into sandbox containers, work on feature branches
   - [ ] Sub-agents report completion or escalate with options back to parent
   - [ ] Parent selects from escalation options or provides free-form direction
-  - [ ] End-to-end test: a task that requires 2 levels in one branch and 1 level in another
+  - [ ] End-to-end test: `hoa init` a demo project, then `hoa run` a task that requires 2 levels in one branch and 1 level in another
+
+- [ ] **Demo project 1**
+  - [ ] Pick a simple project (e.g., CLI tool, REST API, static site generator)
+  - [ ] Run `hoa init` + `hoa run` end to end
+  - [ ] Document what fails, what succeeds, what's painful
+  - [ ] Feed lessons back into HoA (new guardrails, improved templates, better prompts)
 
 ## Phase 1: Guardrails & Retrospection
 
@@ -141,13 +160,15 @@ Make the system pleasant to operate and debug.
   - [ ] Export traces for external analysis
 
 - [ ] **Operational tooling**
-  - [ ] `hoa run <task>` — start a new hierarchy from a task description
-  - [ ] `hoa status` — overview of all active hierarchies
+  - [ ] `hoa init` — create and configure a new target repo (interactive)
+  - [ ] `hoa run --repo <repo> <task>` — start a hierarchy against a target repo
+  - [ ] `hoa status --repo <repo>` — overview of active hierarchies on a target repo
   - [ ] `hoa pause <agent-id>` — pause an agent (hold messages, freeze execution)
   - [ ] `hoa resume <agent-id>` — resume a paused agent
   - [ ] `hoa kill <agent-id>` — terminate an agent and optionally its subtree
-  - [ ] `hoa replay <run-id>` — re-run a completed task with current guardrails
-  - [ ] Configuration management — environment-specific configs, secrets handling
+  - [ ] `hoa replay --repo <repo> <run-id>` — re-run a completed task with current guardrails
+  - [ ] `hoa projects` — list all target repos managed by HoA
+  - [ ] Configuration management — per-project configs, secrets handling
 
 ## Phase 5: Advanced Patterns
 
@@ -169,7 +190,7 @@ Higher-order orchestration strategies built on the core primitives.
   - [ ] Context inheritance — child agents receive parent's relevant context automatically
   - [ ] Context summarization — long-running tasks get periodic context compression
 
-- [ ] **Multi-project support**
-  - [ ] Run multiple independent hierarchies simultaneously
-  - [ ] Shared guardrail library across projects
-  - [ ] Cross-project retrospective analysis
+- [ ] **Cross-project learning**
+  - [ ] Shared guardrail library across projects (promoted from project-specific to global)
+  - [ ] Cross-project retrospective analysis — patterns that span multiple demo projects
+  - [ ] Template evolution — improve AGENTS.md, CI, Dockerfile templates based on demo project outcomes

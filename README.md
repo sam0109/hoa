@@ -1,18 +1,74 @@
 # HoA: Hierarchy of Agents
 
-A framework for orchestrating large numbers of AI agents into reliable, inspectable, self-correcting hierarchies — with Claude Code as the execution primitive.
+A framework for orchestrating large numbers of AI agents to build software — with Claude Code as the execution primitive.
 
-## Why HoA?
+HoA is an **orchestrator**, not a project template. It lives in its own repository and creates, configures, and manages agents that work in a **separate target repository**. All orchestration logic, guardrails, inspection tooling, and agent coordination live here in HoA. All project-specific code, tests, and CI live in the target repo.
 
-Getting a single AI agent to reliably complete a complex task is hard. Getting *dozens* of them to coordinate on a large project without human babysitting is an unsolved problem. HoA is an opinionated framework born from extensive experimentation with multi-agent architectures. It tackles the core failure modes head-on:
+## How It Works
 
-- Agents silently go off the rails with no way to diagnose what happened.
-- Errors compound across agents because there's no feedback loop.
-- The same mistakes recur because nothing enforces learned lessons.
-- Agents accumulate permissions and access they don't need, creating blast radius.
-- Human operators get buried in low-level details instead of steering high-level direction.
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  HoA Repository (this repo)                                     │
+│                                                                  │
+│  • CLI: `hoa init`, `hoa run`, `hoa inspect`, `hoa guardrail`  │
+│  • Orchestration engine (spawn, plan, schedule, escalate)       │
+│  • Inspection layer (logs, traces, dashboards)                  │
+│  • Guardrail engine (deterministic + agent checks)              │
+│  • Retrospection system                                         │
+│  • Project templates (AGENTS.md, Dockerfile, CI, etc.)          │
+│  • Lessons learned across all projects                          │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │
+                           │  `hoa init` creates & configures
+                           │  `hoa run`  orchestrates agents in
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  Target Repository (created per project)                         │
+│                                                                  │
+│  • Project source code (whatever the agents are building)       │
+│  • AGENTS.md (generated — agent workflow for this project)      │
+│  • CI pipeline (generated — deterministic guardrails as checks) │
+│  • Sandbox Dockerfile (generated — agent execution environment) │
+│  • .github/ (labels, templates, branch protection — generated)  │
+│  • Project-specific guardrails and configuration                │
+└─────────────────────────────────────────────────────────────────┘
+```
 
-HoA addresses all of these through a strict hierarchical model with deep inspection, automatic guardrails, structured escalation, mandatory retrospection, and least-privilege security.
+### Workflow
+
+1. **`hoa init`** — Interactive setup. Prompts for project name, description, language/stack, and initial task. Creates a new GitHub repo, configures it with best-practice defaults (branch protection, labels, templates, CI skeleton, AGENTS.md, sandbox Dockerfile), and commits the scaffolding.
+
+2. **`hoa run <task>`** — Kicks off a hierarchy. Tier 0 receives the task, plans a DAG, and orchestrates agents in the target repo. Agents clone the target repo into sandboxed containers, do their work on feature branches, open PRs, get reviewed, and merge — all within the target repo. HoA observes and coordinates from outside.
+
+3. **Iterate** — When things fail (and they will), retrospectives surface what went wrong. New guardrails are added to HoA (if they're general) or to the target repo (if they're project-specific). Run `hoa run` again with the next task. The system gets smarter with each iteration.
+
+### What lives where
+
+| Concern | HoA repo | Target repo |
+|---------|----------|-------------|
+| Orchestration engine | ✓ | |
+| Agent lifecycle management | ✓ | |
+| Inspection / logging / traces | ✓ | |
+| Guardrail engine + agent checks | ✓ | |
+| Retrospection + pattern detection | ✓ | |
+| CLI (`hoa init`, `hoa run`, etc.) | ✓ | |
+| Project templates (AGENTS.md, etc.) | ✓ (templates) | ✓ (generated instances) |
+| General lessons / best practices | ✓ | |
+| Project source code | | ✓ |
+| Project CI (deterministic checks) | | ✓ |
+| Project-specific guardrails | | ✓ |
+| Branch protection / labels / templates | | ✓ (configured by `hoa init`) |
+
+## Development Approach
+
+HoA is developed iteratively through **demo projects**. Each demo is a real (if small) software project built entirely by HoA-orchestrated agents. The purpose is to find where the system breaks, fix it, and try again:
+
+1. Build HoA to the point where it can attempt a simple project.
+2. Run `hoa init` + `hoa run` on a demo project.
+3. Observe what fails — inspect logs, read retrospectives, identify patterns.
+4. Improve HoA (better guardrails, better escalation, better plans).
+5. Run a new demo project and see if the failure modes are gone.
+6. Repeat.
 
 ## Core Principles
 
@@ -230,11 +286,12 @@ This means:
 ## Project Structure
 
 ```
-hoa/
-├── README.md              # This file
-├── TODO.md                # Development roadmap
-├── pyproject.toml         # Project config, dependencies, tool settings
-├── uv.lock                # Locked dependency versions (managed by uv)
+hoa/                           # This repo — the orchestrator
+├── README.md
+├── TODO.md
+├── LESSONS.md                 # Best practices from prior experiments
+├── pyproject.toml
+├── uv.lock
 ├── src/
 │   └── hoa/
 │       ├── __init__.py
@@ -273,25 +330,55 @@ hoa/
 │       │   ├── collector.py   # Retrospective collection from agents
 │       │   ├── aggregator.py  # Pattern detection across retrospectives
 │       │   └── reporter.py    # Retrospective summaries for upper tiers
-│       └── cli/               # CLI tools for agents and operators
+│       └── cli/               # CLI interface
 │           ├── __init__.py
 │           ├── main.py        # Main CLI entrypoint (Click/Typer)
-│           ├── spawn.py       # Spawn agent subcommand
-│           ├── escalate.py    # Escalate issue subcommand
-│           ├── report.py      # Report status subcommand
-│           ├── inspect.py     # Inspect logs/traces subcommand
-│           └── guardrail.py   # Manage guardrails subcommand
-├── guardrails/            # Guardrail definitions (YAML/JSON)
-│   ├── global/            # Applied to all agents
-│   ├── tier/              # Applied to specific tiers
-│   └── role/              # Applied to specific roles
-├── config/                # Configuration
-│   ├── default.yaml       # Default HoA configuration
-│   └── permissions/       # Permission manifest templates
-└── tests/                 # Test suite
+│           ├── init.py        # `hoa init` — create and configure a new target repo
+│           ├── run.py         # `hoa run` — start a hierarchy on a target repo
+│           ├── inspect.py     # `hoa inspect` — view logs/traces
+│           ├── guardrail.py   # `hoa guardrail` — manage guardrails
+│           └── retro.py       # `hoa retro` — view retrospectives
+├── templates/                 # Files generated into target repos by `hoa init`
+│   ├── AGENTS.md.j2           # Agent workflow template (Jinja2)
+│   ├── Dockerfile.j2          # Sandbox container template
+│   ├── docker-compose.yml.j2  # Agent container orchestration
+│   ├── ci.yml.j2              # GitHub Actions CI template
+│   ├── setup-github.sh        # Repo configuration script (labels, branch protection, etc.)
+│   └── CLAUDE.md.j2           # Claude Code instructions template
+├── guardrails/                # Global guardrail definitions (applied to all projects)
+│   ├── global/
+│   ├── tier/
+│   └── role/
+├── config/
+│   ├── default.yaml           # Default HoA configuration
+│   └── permissions/           # Permission manifest templates
+├── scripts/                   # Developer/operator scripts
+│   └── setup-github.sh        # Configure THIS repo's GitHub settings
+└── tests/
     ├── unit/
     ├── integration/
     └── fixtures/
+```
+
+### What `hoa init` generates in the target repo
+
+```
+target-project/
+├── AGENTS.md              # Agent workflow (generated from template, project-specific)
+├── CLAUDE.md              # Claude Code instructions (project-specific rules)
+├── Dockerfile             # Sandbox environment for agents
+├── docker-compose.yml     # Container orchestration for agent instances
+├── .github/
+│   ├── workflows/
+│   │   └── ci.yml         # CI pipeline (deterministic guardrails)
+│   ├── PULL_REQUEST_TEMPLATE.md
+│   ├── ISSUE_TEMPLATE/
+│   │   ├── task.yml
+│   │   ├── guardrail.yml
+│   │   ├── escalation.yml
+│   │   └── retrospective.yml
+│   └── ...
+└── (project source code — created by agents during `hoa run`)
 ```
 
 ## Getting Started
@@ -299,15 +386,21 @@ hoa/
 > **Status: Early Development** — HoA is not yet functional. See [TODO.md](./TODO.md) for the development roadmap.
 
 ```bash
-# Clone the repository
+# Clone HoA
 git clone https://github.com/sam0109/hoa.git
 cd hoa
 
-# Install dependencies (coming soon)
+# Install
 uv sync
 
-# Run HoA (coming soon)
-uv run hoa --help
+# Create a new project (interactive — asks for name, stack, initial task)
+uv run hoa init
+
+# Run a task against an existing project
+uv run hoa run --repo owner/project "Add user authentication"
+
+# Inspect what happened
+uv run hoa inspect --repo owner/project --last
 ```
 
 ## License
