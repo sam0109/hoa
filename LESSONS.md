@@ -4,23 +4,7 @@ This document captures every actionable lesson learned from running multi-agent 
 
 ---
 
-## 1. Agent Claim & Concurrency
-
-### Problem: Duplicate work when multiple agents run in parallel
-Two agents can pick the same issue at the same instant. Simple "assign yourself" is not atomic.
-
-### Solution: Claim-hash locking protocol
-- Agent posts a `CLAIM: <random_hex>` comment on the issue.
-- Agent then re-reads the issue and checks if their claim comment was the **first** one.
-- If not, they silently back off and pick a different issue.
-- This works because GitHub orders comments chronologically, providing a tie-breaker.
-
-### Lesson for HoA
-Inter-agent task claiming must be **atomic and verifiable**. Optimistic locking with a verify step is more robust than relying on a single "assign" operation. HoA's task scheduler should implement a similar claim-verify pattern, or use a central lock, and the entire exchange must be logged.
-
----
-
-## 2. Planning Before Execution
+## 1. Planning Before Execution
 
 ### Problem: Agents that jump straight into coding produce worse, more scattered output
 Without a plan, agents make more mid-course corrections, commit unrelated changes together, and are harder to review.
@@ -40,7 +24,7 @@ Across all chem_sim issues, plans were remarkably accurate — most completed wi
 
 ---
 
-## 3. One Concern Per Commit
+## 2. One Concern Per Commit
 
 ### Problem: Mixed commits (refactoring + features, formatting + logic) are impossible to review and hard to revert
 
@@ -54,7 +38,7 @@ This should be a default guardrail. HoA can enforce it by checking commit diffs 
 
 ---
 
-## 4. Test Ratchet — Never Regress
+## 3. Test Ratchet — Never Regress
 
 ### Problem: Agents "fix" failing tests by weakening tolerances or removing assertions
 
@@ -69,7 +53,7 @@ The test ratchet pattern is generalizable. HoA should support "ratchet guardrail
 
 ---
 
-## 5. Sub-Agent Code Review
+## 4. Sub-Agent Code Review
 
 ### Problem: Self-review is unreliable — the agent that wrote the code has the same blind spots
 
@@ -95,7 +79,7 @@ Sub-agent review is extremely high-value. Every PR produced by an agent should b
 
 ---
 
-## 6. Mandatory Retrospection Produces Real Signal
+## 5. Mandatory Retrospection Produces Real Signal
 
 ### Problem: Without structured reflection, agents repeat the same mistakes across issues
 
@@ -130,45 +114,7 @@ Retrospection works. The key is making it **mandatory and structured** — not o
 
 ---
 
-## 7. YAML/Config Validation Is a Recurring Failure Mode
-
-### Problem: Agents write syntactically invalid YAML, or YAML that parses differently than intended
-
-**Specific failures observed:**
-- `#` in unquoted YAML strings starts a comment — agents don't realize this
-- YAML `>` folding produces unexpected whitespace
-- CI job names in scripts don't match the `name:` field in workflow YAML
-
-### Solution that emerged
-- Always validate YAML with a real parser (not visual inspection)
-- `python3 -c "import yaml; yaml.safe_load(open('file'))"` or `npx js-yaml <file>`
-- Run all CI-equivalent commands locally before committing CI changes
-
-### Lesson for HoA
-Config validation should be a built-in runtime guardrail. Before any agent commits a YAML/JSON/TOML config file, HoA should automatically validate it with the appropriate parser. This is a cheap check that prevents a disproportionate number of failures.
-
----
-
-## 8. Layer Boundary Enforcement
-
-### Problem: Over time, modules develop forbidden cross-dependencies (e.g., engine code importing UI code)
-
-### Solution: Automated boundary enforcement
-- `eslint-plugin-boundaries` enforced architectural layer rules.
-- Clear import rules: engine can only import data, renderer can't import engine directly, etc.
-- Violations fail CI.
-
-### Gotchas discovered
-- Use `mode: "folder"` not `mode: "full"` — the latter can't resolve relative imports.
-- Must install `eslint-import-resolver-typescript` alongside the boundaries plugin.
-- **Test enforcement by adding a forbidden import and running the linter** — don't just verify "lint passes" (which could mean rules aren't matching at all).
-
-### Lesson for HoA
-Architectural boundary enforcement is a guardrail that should be pushed to agents as part of their pre-execution context. In multi-agent hierarchies, each agent should know what modules they're allowed to modify and what they can import. HoA should treat this as a permission: "this agent may modify `src/engine/` and import from `src/data/`."
-
----
-
-## 9. Pre-Commit Hooks as a Safety Net
+## 6. Pre-Commit Hooks as a Safety Net
 
 ### Problem: Agents commit code that fails basic checks (lint, format, type errors)
 
@@ -182,7 +128,7 @@ Pre-execution and commit-time guardrails are the cheapest form of quality assura
 
 ---
 
-## 10. Environment & Tooling Assumptions Fail
+## 7. Environment & Tooling Assumptions Fail
 
 ### Problem: Agents assume tools/runtimes exist that aren't present
 
@@ -197,7 +143,7 @@ HoA's permission manifest should include an **environment declaration** — what
 
 ---
 
-## 11. Concurrent Agents Need Merge Conflict Strategy
+## 8. Concurrent Agents Need Merge Conflict Strategy
 
 ### Problem: When multiple agents work in parallel, merge conflicts are inevitable
 
@@ -224,7 +170,7 @@ chem_sim used option 3 (worktrees/containers) with manual conflict resolution. H
 
 ---
 
-## 12. PR Checklist as a Guardrail
+## 9. PR Checklist as a Guardrail
 
 ### Problem: Agents forget to verify important properties (tests pass, no regressions, architecture respected)
 
@@ -243,7 +189,7 @@ PR checklists should be auto-generated from the active guardrails for an agent's
 
 ---
 
-## 13. Known Failures Must Be Explicit, Not Hidden
+## 10. Known Failures Must Be Explicit, Not Hidden
 
 ### Problem: Agents either ignore pre-existing failures or try to "fix" them by weakening tests
 
@@ -264,7 +210,7 @@ A guardrail should prevent agents from weakening test assertions. This can be de
 
 ---
 
-## 14. Docker/Container Isolation for Agents
+## 11. Docker/Container Isolation for Agents
 
 ### Problem: Agents using shared filesystems (even with git worktrees) can interfere with each other
 
@@ -290,7 +236,7 @@ Containerized isolation is the right default for HoA agents. Each agent's sandbo
 
 ---
 
-## 15. Pool Management for Multi-Agent Runs
+## 12. Pool Management for Multi-Agent Runs
 
 ### Solution observed: `launch-agents.py`
 - Maintains N concurrent agents at all times.
@@ -308,7 +254,7 @@ HoA's Tier 0 effectively IS a pool manager. The chem_sim pool manager was simple
 
 ---
 
-## 16. Follow-Up Issue Hygiene
+## 13. Follow-Up Issue Hygiene
 
 ### Problem: Agents create duplicate follow-up issues, or create issues that overlap with existing ones
 
@@ -333,9 +279,6 @@ Based on what actually prevented the most failures in chem_sim:
 | 2 | Mandatory plan before execution | Pre-execution | Dramatically improved agent focus and output quality |
 | 3 | Sub-agent code review | Post-execution | Caught real bugs in nearly every PR |
 | 4 | Mandatory retrospection | Post-execution | Surfaced systemic issues and produced actionable lessons |
-| 5 | Layer boundary enforcement (lint) | Runtime, automated | Prevented architectural decay |
-| 6 | PR checklist (dynamic) | Pre-merge gate | Ensured agents checked important properties |
-| 7 | Config file validation | Runtime, automated | Cheap check that prevented frequent YAML/JSON failures |
-| 8 | Pre-commit hooks | Runtime, automated | Caught formatting and lint issues at commit time |
-| 9 | Claim-hash locking | Pre-execution | Prevented duplicate work in parallel |
-| 10 | Known-failures pattern | Process | Prevented both test-hiding and tolerance-weakening |
+| 5 | PR checklist (dynamic) | Pre-merge gate | Ensured agents checked important properties |
+| 6 | Pre-commit hooks | Runtime, automated | Caught formatting and lint issues at commit time |
+| 7 | Known-failures pattern | Process | Prevented both test-hiding and tolerance-weakening |
