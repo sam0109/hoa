@@ -53,20 +53,29 @@ HoA does not reinvent agent execution. Every agent in the hierarchy is a Claude 
 
 ### 3. Guardrails as a Learning System
 
-When a failure mode is identified — whether by a human operator, a retrospective, or an automated check — a guardrail is created to prevent recurrence. Guardrails are not suggestions; they are enforced constraints injected into agent context and validated against agent behavior.
+When a failure mode is identified — whether by a human operator, a retrospective, or an automated check — a guardrail is created to prevent recurrence. Guardrails are not suggestions; they are enforced constraints validated against agent behavior.
 
-**Guardrail types:**
-- **Pre-execution**: Injected into agent system prompts and task context. These set boundaries before the agent acts. Examples: "Never modify files outside your assigned directory," "Always run tests before reporting completion."
-- **Runtime**: Checked against agent actions as they happen. These can warn, block, or escalate. Examples: "Flag any shell command that would delete more than 10 files," "Reject tool calls to endpoints outside the allow-list."
-- **Post-execution**: Validated against agent output after a task completes. These catch subtle policy violations. Examples: "Output must include a test plan," "Modified files must pass linting."
+**Guardrail mechanisms (how they run):**
+
+Guardrails come in two fundamentally different flavors, and the system must support both:
+
+- **Deterministic checks**: Hard, fast, automated — no LLM in the loop. These are programs that run against agent output and return pass/fail. Examples: linters, type checkers, unit test suites, config validators, file permission checks, regex pattern matches, ratchet counters (e.g., "passing test count must not decrease"). Deterministic checks are cheap, reliable, and should be preferred whenever possible. Think CI pipeline.
+- **Agent checks**: An LLM evaluates structured output against a rule expressed in natural language. The agent's work product is presented to a separate evaluator agent along with the rule, and the evaluator returns a judgment (pass/warn/fail) with reasoning. Examples: "Does this code change maintain backward compatibility?", "Is the error message user-friendly?", "Does the API design follow RESTful conventions?" Agent checks are more expensive and less reliable than deterministic checks, but they can evaluate properties that are impossible to express as code.
+
+Both mechanisms can be applied at any phase:
+
+**Guardrail phases (when they run):**
+- **Pre-execution**: Applied before the agent acts. Deterministic: validate the task spec is well-formed, check that required context files exist. Agent: review the task spec for ambiguity or scope creep.
+- **Runtime**: Applied as the agent works. Deterministic: intercept shell commands against an allow-list, enforce file path restrictions. Agent: review intermediate output for quality drift.
+- **Post-execution**: Applied after the agent reports completion. Deterministic: run the test suite, lint the output, check coverage thresholds, validate config files with parsers. Agent: review the final diff for correctness, style, and architectural conformance.
 
 **Guardrail lifecycle:**
 1. A failure or bad pattern is identified (via retrospective, human review, or automated detection).
-2. A guardrail is authored — a structured rule with a trigger condition and enforcement action.
+2. A guardrail is authored — either as a deterministic script/command or as a natural-language rule for agent evaluation.
 3. The guardrail is scoped — applied globally, to a specific tier, to a role, or to individual agents.
-4. The guardrail is activated — injected into relevant agents on their next task.
-5. The guardrail is monitored — trigger frequency and false-positive rate are tracked.
-6. The guardrail is refined — adjusted or retired based on effectiveness data.
+4. The guardrail is activated — deterministic checks are added to the agent's CI-like pipeline; agent checks are added to the evaluator's prompt.
+5. The guardrail is monitored — trigger frequency, false-positive rate, and (for agent checks) evaluator agreement rate are tracked.
+6. The guardrail is refined — adjusted or retired based on effectiveness data. When possible, agent checks that prove stable should be converted into deterministic checks for reliability and cost.
 
 ### 4. Issues Flow Up, Direction Flows Down
 
@@ -75,15 +84,16 @@ The hierarchy is not just an org chart — it defines strict communication chann
 **Direction (downward):**
 - Tier 0 (the top) holds the full project context and creates the high-level plan.
 - Tier 0 decomposes work into tasks and assigns them to Tier 1 agents.
-- Each tier further decomposes and delegates to the tier below.
+- Each tier further decomposes and delegates to the tier below (see Adaptive Depth below).
 - Direction includes: task specification, success criteria, relevant guardrails, and a permissions manifest.
 
 **Issues (upward):**
 - When an agent encounters a problem it cannot resolve at its tier, it escalates.
-- Escalations are structured: what was attempted, what failed, what the agent thinks the blocker is.
-- The tier above receives the escalation and either resolves it (adjusting direction) or escalates further.
+- Escalations are structured and **actionable**: what was attempted, what failed, what the agent thinks the blocker is, and **concrete suggestions for next steps** — including alternative approaches the agent considered but couldn't pursue without guidance.
+- Escalations are presented to the tier above as a **choice** — using the same pattern as Claude Code's `AskUserQuestion` tool. The parent agent receives the issue along with a set of proposed options (e.g., "A: Retry with adjusted parameters, B: Restructure the approach to avoid X, C: Escalate further — I need more context about Y"). The parent can pick an option or provide free-form direction.
+- This means the tier above is never handed a bare problem and expected to invent a solution from scratch — the escalating agent has already done the analysis and framed the decision. The parent's job is to **steer**, not to **solve**.
+- If the parent can't resolve it, it re-summarizes and re-escalates with its own option set — each tier adds its perspective but keeps the message concise.
 - Escalations propagate upward until they reach a tier with sufficient context/authority to resolve them.
-- Crucially, escalations are *summarized* at each tier — Tier 0 should never be buried in low-level stack traces. It should receive "the database migration strategy is incompatible with the zero-downtime requirement" not a raw error log.
 
 **Status reporting:**
 - Agents report progress on a configurable cadence.
@@ -131,29 +141,52 @@ Agents operate in sandboxes with the minimum permissions necessary. The permissi
 
 ## Architecture Overview
 
+### Adaptive Depth
+
+The hierarchy is **not** a fixed N-tier structure. Depth is determined dynamically by task complexity.
+
+When an agent receives a task, it follows this procedure:
+
+1. **Plan**: Decompose the task into subtasks. The plan is a **DAG** (directed acyclic graph) — subtasks declare their dependencies so they can be executed in the correct order, with independent subtasks running in parallel.
+2. **Decide depth**: For each subtask, the agent explicitly decides: "Can I do this myself, or does this need a sub-agent?" Simple subtasks (small bug fixes, single-file edits, running a command) are executed directly. Complex subtasks (multi-file features, design decisions, anything requiring further decomposition) are delegated to a new sub-agent.
+3. **Submit plan for approval**: The plan (with the self-execute vs. delegate decision for each subtask) is sent to the tier above for review. The parent can approve, request changes, or restructure the plan. This is an iterative loop — the agent revises until the plan is accepted.
+4. **Execute**: Once approved, the agent executes self-assigned subtasks and spawns sub-agents for delegated ones, respecting the DAG's dependency order.
+
+This means:
+- A trivial task might be: Human → Tier 0 → Tier 1 (executes directly). Two levels total.
+- A complex task might be: Human → Tier 0 → Tier 1 → Tier 2 → Tier 3. Four levels, and only in the branches that need it.
+- The tree is **uneven** — one branch might go 3 levels deep while a sibling branch is handled directly by Tier 1.
+- Every plan at every level is a DAG, so HoA can schedule independent subtasks in parallel and enforce that dependencies are completed before dependents start.
+
 ```
                     ┌─────────────────┐
                     │  Human Operator  │
                     └────────┬────────┘
-                             │ configures & monitors
+                             │ task + approval
                              ▼
                     ┌─────────────────┐
                     │    Tier 0       │
-                    │  (Coordinator)  │◄──── Full project context
-                    └───┬────────┬────┘      Highest permissions
+                    │  (Coordinator)  │  Plans a DAG, submits to human
+                    └───┬────────┬────┘
                         │        │
-              direction │        │ direction
+              delegates │        │ delegates
                         ▼        ▼
                 ┌──────────┐  ┌──────────┐
-                │  Tier 1  │  │  Tier 1  │◄── Scoped context
-                │ (Lead A) │  │ (Lead B) │    Narrowed permissions
-                └──┬───┬───┘  └──┬───┬───┘
-                   │   │        │   │
-                   ▼   ▼        ▼   ▼
-                ┌────┐┌────┐ ┌────┐┌────┐
-                │ T2 ││ T2 │ │ T2 ││ T2 │◄── Task-specific context
-                └────┘└────┘ └────┘└────┘     Minimal permissions
+                │  Tier 1  │  │  Tier 1  │  Each plans a DAG,
+                │ (Lead A) │  │ (Lead B) │  submits to Tier 0
+                └──┬───┬───┘  └────┬─────┘
+                   │   │           │
+             T1-A  │   │ delegates │ executes directly
+          executes │   ▼           │ (simple subtask)
+          directly │ ┌────┐        │
+          (simple) │ │ T2 │        │
+                   │ └─┬──┘        │
+                   │   │ executes  │
+                   │   │ directly  │
+                   │   │           │
+                   ▼   ▼           ▼
 
+    Depth varies per branch — driven by task complexity
 
          ─── Direction flows DOWN ───▶
          ◀─── Issues flow UP ────────
@@ -163,6 +196,35 @@ Agents operate in sandboxes with the minimum permissions necessary. The permissi
     │  (logs, traces, guardrails, retros)  │
     │  Captures EVERYTHING, queryable      │
     └──────────────────────────────────────┘
+```
+
+### Plan DAG Example
+
+```
+  Tier 1 agent receives: "Add user authentication to the API"
+
+  Plan submitted to Tier 0 for approval:
+
+  ┌─────────────────────┐
+  │ A: Design auth schema│  (self — research + design doc)
+  └──────────┬──────────┘
+             │
+     ┌───────┴────────┐
+     ▼                ▼
+  ┌──────────┐  ┌──────────────┐
+  │B: JWT    │  │C: Password   │  (delegate — both are complex,
+  │  middleware│  │  hashing     │   run in parallel, no dependency
+  └────┬─────┘  └──────┬───────┘   between them)
+       │               │
+       └───────┬───────┘
+               ▼
+        ┌────────────┐
+        │D: Integration│  (self — wiring, needs B and C done)
+        │   tests      │
+        └──────────────┘
+
+  Tier 0 reviews: "Looks good, but add a subtask for rate limiting
+  between C and D." Agent revises, resubmits, gets approval.
 ```
 
 ## Project Structure
@@ -179,8 +241,9 @@ hoa/
 │       ├── core/              # Core orchestration engine
 │       │   ├── __init__.py
 │       │   ├── hierarchy.py   # Hierarchy management (spawn, teardown, topology)
-│       │   ├── scheduler.py   # Task decomposition and assignment
-│       │   └── lifecycle.py   # Agent lifecycle (init, run, retro, terminate)
+│       │   ├── planner.py     # Plan creation, DAG construction, dependency resolution
+│       │   ├── scheduler.py   # Task scheduling respecting DAG order + parallelism
+│       │   └── lifecycle.py   # Agent lifecycle (init, plan, approve, run, retro, terminate)
 │       ├── comms/             # Inter-agent communication
 │       │   ├── __init__.py
 │       │   ├── channels.py    # Message channels (direction down, issues up)
@@ -194,9 +257,11 @@ hoa/
 │       │   └── replay.py      # Post-hoc trace replay and analysis
 │       ├── guardrails/        # Guardrail system
 │       │   ├── __init__.py
-│       │   ├── engine.py      # Guardrail evaluation engine
+│       │   ├── engine.py      # Guardrail evaluation engine (dispatches to deterministic or agent)
+│       │   ├── deterministic.py # Deterministic checks (lint, test, validate, ratchet)
+│       │   ├── agent_check.py # Agent-based evaluation (LLM judges output against a rule)
 │       │   ├── registry.py    # Guardrail storage and retrieval
-│       │   ├── types.py       # Pre/runtime/post guardrail definitions
+│       │   ├── types.py       # Guardrail definitions (mechanism × phase matrix)
 │       │   └── lifecycle.py   # Guardrail creation, scoping, monitoring
 │       ├── security/          # Permission and sandbox management
 │       │   ├── __init__.py

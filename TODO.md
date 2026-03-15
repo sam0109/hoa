@@ -2,7 +2,7 @@
 
 ## Phase 0: Foundation
 
-The absolute minimum to run a two-tier hierarchy with logging.
+The absolute minimum to run an adaptive-depth hierarchy with logging.
 
 - [ ] **Project scaffolding**
   - [ ] Initialize Python project with pyproject.toml (Python 3.11+), managed by uv
@@ -23,32 +23,42 @@ The absolute minimum to run a two-tier hierarchy with logging.
   - [ ] Implement `monitor` — poll/stream agent status
   - [ ] Implement `terminate` — graceful and forceful shutdown
   - [ ] Hook into CC to capture full input/output/tool-call telemetry
-  - [ ] Define agent state machine: `spawning → running → completing → retrospecting → done | failed`
+  - [ ] Define agent state machine: `spawning → planning → awaiting_approval → running → completing → retrospecting → done | failed`
+
+- [ ] **Plan-as-DAG system**
+  - [ ] Define plan schema — DAG of subtasks with: description, verification criteria, dependencies (edges), and self-execute vs. delegate decision
+  - [ ] DAG validation — reject cycles, ensure all dependencies reference valid subtask IDs
+  - [ ] DAG scheduler — topological sort, identify parallelizable subtasks, track completion
+  - [ ] Plan approval protocol — agent submits plan to parent, parent approves/rejects/requests changes, iterate until accepted
+  - [ ] Hook plan approval into CC's `AskUserQuestion`-style interaction (parent receives plan as structured choices)
 
 - [ ] **Inter-agent communication (minimal)**
   - [ ] Define message protocol (JSON schema): direction messages, status reports, escalation requests
+  - [ ] Escalation messages must include: what was attempted, what failed, blocker analysis, and **suggested next steps as selectable options**
   - [ ] Implement CLI tool: `hoa-msg send <target> <message>` — used by agents to communicate
   - [ ] Implement CLI tool: `hoa-msg recv` — agent polls for incoming messages
   - [ ] All messages logged to inspection layer with sender, receiver, timestamp, payload
 
-- [ ] **Basic hierarchy (two-tier proof of concept)**
-  - [ ] Tier 0 agent spawns Tier 1 agents with task specifications
-  - [ ] Tier 1 agents report completion or failure back to Tier 0
-  - [ ] Tier 0 agent can react to Tier 1 failures (retry, reassign, or fail the run)
-  - [ ] End-to-end test: Tier 0 decomposes a simple coding task, Tier 1 agents execute, results are merged
+- [ ] **Basic hierarchy (adaptive-depth proof of concept)**
+  - [ ] Agent receives task, creates plan DAG, submits for approval
+  - [ ] Agent decides per-subtask: self-execute or delegate to sub-agent
+  - [ ] Sub-agents report completion or escalate with options back to parent
+  - [ ] Parent selects from escalation options or provides free-form direction
+  - [ ] End-to-end test: a task that requires 2 levels in one branch and 1 level in another
 
 ## Phase 1: Guardrails & Retrospection
 
 Add the feedback loop that makes the system learn from mistakes.
 
 - [ ] **Guardrail engine**
-  - [ ] Define guardrail schema (YAML): trigger condition, enforcement action, scope, metadata
+  - [ ] Define guardrail schema (YAML): mechanism (deterministic or agent_check), phase (pre/runtime/post), trigger condition, enforcement action, scope, metadata
   - [ ] Implement guardrail registry — CRUD for guardrail definitions, stored in `./guardrails/`
-  - [ ] Implement pre-execution guardrails — injected into agent system prompts before task starts
-  - [ ] Implement runtime guardrails — intercept tool calls and validate against rules
-  - [ ] Implement post-execution guardrails — validate agent output against acceptance criteria
-  - [ ] Guardrail trigger logging — every trigger (pass, warn, block) logged to inspection layer
+  - [ ] Implement deterministic guardrails — run shell commands/scripts that return pass/fail (linters, test suites, validators, ratchet counters)
+  - [ ] Implement agent-check guardrails — present structured output + rule to an evaluator LLM, get pass/warn/fail with reasoning
+  - [ ] Wire both mechanisms into pre-execution, runtime, and post-execution phases
+  - [ ] Guardrail trigger logging — every trigger (pass, warn, block) logged to inspection layer, including evaluator reasoning for agent checks
   - [ ] CLI: `hoa guardrail add`, `hoa guardrail list`, `hoa guardrail disable`
+  - [ ] Track agent-check agreement rate — flag guardrails where the evaluator is inconsistent
 
 - [ ] **Retrospection system**
   - [ ] Define retrospective schema: what went well, what went poorly, time/cost, suggestions
@@ -69,16 +79,18 @@ Add the feedback loop that makes the system learn from mistakes.
 Extend from two tiers to N tiers with proper escalation.
 
 - [ ] **Issue escalation**
-  - [ ] Define escalation protocol: what was attempted, what failed, proposed blocker
-  - [ ] Implement escalation routing — issues flow to parent, parent resolves or re-escalates
-  - [ ] Implement escalation summarization — each tier condenses the escalation before passing up
-  - [ ] Tier 0 escalation surfaces to human operator (CLI prompt or webhook)
+  - [ ] Define escalation protocol: what was attempted, what failed, blocker analysis, and **suggested next steps as selectable options**
+  - [ ] Implement escalation routing — issues flow to parent as structured choices (AskUserQuestion pattern)
+  - [ ] Parent can select a suggested option or provide free-form direction
+  - [ ] Implement escalation summarization — each tier condenses and re-frames options before passing up
+  - [ ] Tier 0 escalation surfaces to human operator (CLI prompt or webhook) with the same option-selection UX
   - [ ] Escalation timeout — if a tier doesn't respond within a threshold, auto-escalate
-  - [ ] All escalations logged with full chain in inspection layer
+  - [ ] All escalations logged with full chain in inspection layer (including which option was selected at each tier)
 
-- [ ] **N-tier hierarchy support**
-  - [ ] Generalize hierarchy management — arbitrary depth, configurable topology
-  - [ ] Task decomposition at each tier — parent breaks work into subtasks for children
+- [ ] **Adaptive-depth hierarchy**
+  - [ ] Agents at any tier can decide to self-execute or delegate — no fixed depth
+  - [ ] Plan approval loop — agent submits DAG plan to parent, iterates until accepted
+  - [ ] Uneven trees — different branches can have different depths based on subtask complexity
   - [ ] Status aggregation — each tier rolls up status from below into a summary for above
   - [ ] Subtree management — spawn, monitor, and tear down entire branches
 
@@ -142,7 +154,8 @@ Make the system pleasant to operate and debug.
 Higher-order orchestration strategies built on the core primitives.
 
 - [ ] **Parallel execution strategies**
-  - [ ] Fan-out/fan-in — Tier N spawns multiple Tier N+1 agents in parallel, merges results
+  - [ ] DAG-driven parallelism — independent subtasks in a plan DAG execute concurrently (this is the default, built into Phase 0)
+  - [ ] Fan-out/fan-in — Tier N spawns multiple sub-agents in parallel, merges results
   - [ ] Competitive execution — multiple agents attempt the same task, best result wins
   - [ ] Pipeline execution — agents in sequence, output of one feeds into the next
 
