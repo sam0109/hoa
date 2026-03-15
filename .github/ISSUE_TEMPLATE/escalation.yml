@@ -1,0 +1,38 @@
+name: Escalation
+description: An issue escalated from a lower tier that needs higher-level direction
+labels: ["escalated"]
+body:
+  - type: textarea
+    id: context
+    attributes:
+      label: What was the original task?
+      description: Brief description of what the agent was trying to accomplish
+    validations:
+      required: true
+  - type: textarea
+    id: attempted
+    attributes:
+      label: What was attempted?
+      description: What approaches did the agent try before escalating?
+    validations:
+      required: true
+  - type: textarea
+    id: blocker
+    attributes:
+      label: What is the blocker?
+      description: Why can't this be resolved at the current tier?
+    validations:
+      required: true
+  - type: textarea
+    id: options
+    attributes:
+      label: Suggested next steps
+      description: |
+        Provide 2-4 concrete options for the tier above to choose from.
+        The parent should be able to steer, not solve from scratch.
+      placeholder: |
+        - **Option A**: [description] — [tradeoffs]
+        - **Option B**: [description] — [tradeoffs]
+        - **Option C**: Escalate further — [what additional context is needed]
+    validations:
+      required: true

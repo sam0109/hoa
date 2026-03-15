@@ -1,0 +1,55 @@
+name: Guardrail
+description: Propose a new guardrail (deterministic check or agent check)
+labels: ["guardrails"]
+body:
+  - type: dropdown
+    id: mechanism
+    attributes:
+      label: Mechanism
+      description: How should this guardrail be enforced?
+      options:
+        - "Deterministic check (script/command, pass/fail)"
+        - "Agent check (LLM evaluates against a rule)"
+    validations:
+      required: true
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Phase
+      description: When should this guardrail run?
+      options:
+        - Pre-execution (before the agent starts)
+        - Runtime (while the agent works)
+        - Post-execution (after the agent finishes)
+    validations:
+      required: true
+  - type: textarea
+    id: rule
+    attributes:
+      label: Rule
+      description: |
+        For deterministic: the command to run and what pass/fail means.
+        For agent check: the natural-language rule the evaluator should judge against.
+      placeholder: |
+        Example (deterministic): `ruff check src/` must exit 0
+        Example (agent check): "All public functions must have docstrings that explain the why, not just the what"
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: What failure or bad pattern prompted this guardrail? Link to a retrospective or issue if applicable.
+    validations:
+      required: true
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - Global (all agents)
+        - Tier-specific
+        - Role-specific
+        - Single agent
+    validations:
+      required: true

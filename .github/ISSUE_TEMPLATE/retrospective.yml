@@ -1,0 +1,42 @@
+name: Retrospective
+description: Post-completion reflection on a unit of work
+labels: ["retrospective"]
+body:
+  - type: input
+    id: task_ref
+    attributes:
+      label: Related task/issue
+      description: "Link to the issue this retrospective covers (e.g., #42)"
+    validations:
+      required: true
+  - type: textarea
+    id: went_well
+    attributes:
+      label: What went well
+      description: Patterns and approaches that worked — these may become best-practice guardrails
+    validations:
+      required: true
+  - type: textarea
+    id: went_poorly
+    attributes:
+      label: What went poorly
+      description: Failures, dead ends, unexpected difficulties — these may become preventive guardrails
+    validations:
+      required: true
+  - type: textarea
+    id: metrics
+    attributes:
+      label: Metrics
+      description: |
+        - Plan accuracy: X of Y steps completed as written
+        - Review rounds: N
+        - Follow-up issues created: #list or none
+    validations:
+      required: true
+  - type: textarea
+    id: suggestions
+    attributes:
+      label: Suggestions
+      description: Concrete recommendations for improving the process, tooling, or guardrails
+    validations:
+      required: false
