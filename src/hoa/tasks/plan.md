@@ -4,6 +4,14 @@
 
 GitHub Issues can't represent DAG dependencies — there's no way to say "task B depends on tasks A and C" and have scheduling respect that. HoA needs its own task management system where plans are DAGs, dependencies control execution order, and agents own tasks at specific tiers.
 
+## Dependencies
+
+```
+tasks/  →  (none)
+```
+
+The tasks module has **no dependencies** on other HoA modules. It defines the `Task` data model, `TaskState` state machine, the in-memory DAG engine, and the SQLite-backed `TaskStore`. It is consumed by `core/` (which uses `TaskStore` for scheduling) and `inspection/` (which logs task state changes), but it never imports from them.
+
 ## Approach: SQLite + In-Memory DAG (Hybrid)
 
 ### Why this combination?

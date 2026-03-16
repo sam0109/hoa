@@ -8,6 +8,16 @@ The security module is a standalone permission and sandboxing system. Given any 
 
 ---
 
+## Dependencies
+
+```
+security/  →  (none)
+```
+
+The security module has **no dependencies** on other HoA modules. It is a leaf in the dependency graph — any module can import from `security/` without risk of circular imports.
+
+---
+
 ## Public Interface
 
 The security module exposes three things to the rest of HoA: a `PermissionManifest` data model, a `PermissionEnforcer` that validates actions against a manifest, and a `SandboxFactory` that creates isolated execution environments.

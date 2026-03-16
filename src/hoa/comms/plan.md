@@ -10,6 +10,18 @@ The comms module is a structured communication protocol for hierarchical agent c
 
 ---
 
+## Dependencies
+
+```
+comms/  →  core/  (agent identity model — agent_id, tier used in Message and Escalation)
+```
+
+**`core/`** is a **required dependency** (when this module is built). Messages reference agent IDs and tier numbers defined by the core orchestration model. The `Message.from_agent_id`, `to_agent_id`, `from_tier`, `to_tier` fields use the same identity scheme as `core/lifecycle.py`'s `AgentConfig.task_id` and the tier hierarchy.
+
+**Note:** Since this module is future work, no imports exist yet. The data models defined here use `str` for agent IDs and `int` for tiers — matching the core module's conventions — so integration will be straightforward when the time comes.
+
+---
+
 ## Public Interface
 
 The comms module exposes three things: a message data model, channels for routing messages, and an escalation protocol for upward issue flow.
