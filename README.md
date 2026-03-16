@@ -71,7 +71,11 @@ HoA is developed iteratively through **demo projects**. Each demo is a real (if 
 
 ## Core Components
 
+HoA is built as a set of independent, composable modules. Each Core Component is a self-contained system with its own data model, configuration, and runtime — usable in isolation or combined seamlessly. You can adopt just the security layer for sandboxing, just the inspection layer for logging, or wire them all together for the full orchestration experience. When multiple components are active, they integrate through well-defined interfaces: the inspection layer records guardrail triggers, the retrospection system feeds patterns back into guardrails, the planner respects security constraints, and so on — but none of them *require* the others to function.
+
 ### 1. Least-Privilege Security
+
+**A standalone permission and sandboxing system.** Given any agent execution — whether managed by HoA or invoked manually — the security module enforces permission boundaries, mediates privilege escalation, and provides container-based isolation. It operates independently of the other components: you can sandbox an agent without planning, guardrails, or inspection.
 
 Agents operate in sandboxes with the minimum permissions necessary. The permission model is hierarchical and strictly non-escalating.
 
@@ -97,6 +101,8 @@ Agents operate in sandboxes with the minimum permissions necessary. The permissi
 
 ### 2. Claude Code as the Primitive
 
+**A thin integration layer over Claude Code.** This component handles the interface between HoA and Claude Code instances — lifecycle hooks, context injection, and telemetry capture. It works on its own as a way to launch and observe CC instances with structured configuration, independent of planning, guardrails, or the rest of HoA. When other components are present, they plug into the hooks this layer exposes.
+
 HoA does not reinvent agent execution. Every agent in the hierarchy is a Claude Code instance. HoA adds the orchestration, logging, and coordination layers on top.
 
 **What this means:**
@@ -112,6 +118,8 @@ HoA does not reinvent agent execution. Every agent in the hierarchy is a Claude 
 - Hooks for inspection and guardrail enforcement
 
 ### 3. DAG-Based Planning
+
+**A standalone task decomposition and scheduling engine.** Given a task description, the planner produces a DAG of subtasks with dependency edges, decides which to self-execute vs. delegate, and schedules execution respecting the dependency order. The planner has no dependency on the guardrail system, the inspection layer, or the security module — it takes a task in and produces an executable plan. When other components are present, plans are validated against security constraints, plan execution is logged by the inspection layer, and guardrails can gate plan approval.
 
 Every agent plans its work as a **DAG** (directed acyclic graph) of subtasks. Planning is the core activity that drives all agent execution in HoA.
 
@@ -163,6 +171,8 @@ The hierarchy is **not** a fixed N-tier structure. Depth is determined dynamical
 
 ### 4. Deep Inspectability
 
+**A self-contained logging and tracing system.** The inspection layer captures, stores, and exposes structured records of all agent activity. It functions independently — attach it to any CC instance and it will log inputs, outputs, tool calls, timing, and cost, regardless of whether the agent was launched through HoA's planner or run ad hoc. When other components are present, it also captures guardrail evaluations, plan approval decisions, security escalations, and retrospective records, providing a unified view across the full orchestration lifecycle.
+
 Every agent interaction is logged with full fidelity. This is non-negotiable — when something goes wrong (and it will), you need to reconstruct exactly what happened.
 
 **What gets logged:**
@@ -181,6 +191,8 @@ Every agent interaction is logged with full fidelity. This is non-negotiable —
 - Diff view for comparing runs to identify regressions
 
 ### 5. Guardrails as a Learning System
+
+**A standalone constraint enforcement engine.** The guardrail system evaluates agent work products against a registry of rules — deterministic checks (linters, test suites, validators) and agent checks (LLM-based evaluation). It can run independently against any code change or agent output, with no dependency on the planner, inspection layer, or security module. When other components are present, the guardrail engine is invoked at plan-approval time, wired into the inspection layer for auditability, and fed by the retrospection system's pattern detection.
 
 When a failure mode is identified — whether by a human operator, a retrospective, or an automated check — a guardrail is created to prevent recurrence. Guardrails are not suggestions; they are enforced constraints validated against agent behavior.
 
@@ -208,6 +220,8 @@ Both mechanisms can be applied at any phase:
 
 ### 6. Mandatory Retrospection
 
+**A standalone post-execution analysis system.** After any unit of work — a single task, a feature branch, a full project run — the retrospection module collects structured reflections, detects recurring patterns, and produces actionable summaries. It operates independently: point it at a completed task's output and it will generate a retrospective, regardless of whether guardrails or planning were involved. When other components are present, retrospective findings are automatically proposed as new guardrails, surfaced in the inspection layer, and used to improve future plan decompositions.
+
 Every agent, at every tier, must reflect after completing a unit of work. This is not optional, and it is not an afterthought — it is a first-class primitive built into the task lifecycle.
 
 **What a retrospective includes:**
@@ -225,6 +239,8 @@ Every agent, at every tier, must reflect after completing a unit of work. This i
 ### 7. Issues Flow Up, Direction Flows Down
 
 > **Future Work:** The structured escalation protocol and inter-agent messaging channels described in this section are planned for a future iteration. The conceptual direction is documented here for vision purposes. Phase 0 focuses on single-agent execution with human-in-the-loop oversight.
+
+**A structured communication protocol for hierarchical agent coordination.** This component defines the messaging patterns — direction flowing downward and issues escalating upward — that enable multi-agent hierarchies. As a standalone protocol, it specifies message formats, escalation semantics, and aggregation rules independent of the other components. When other components are present, the security module enforces communication scope, the inspection layer logs all messages, and the planner uses downward direction to assign sub-tasks.
 
 The hierarchy is not just an org chart — it defines strict communication channels.
 
