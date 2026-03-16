@@ -2,11 +2,24 @@
 
 ## Context
 
-The core module is the integration hub of HoA. It manages the agent lifecycle (init, plan, approve, run, retro, terminate), hosts the planner that decomposes tasks into DAGs, and runs the scheduler that dispatches ready tasks respecting dependency order. It depends on the `tasks/` module for storage and the `Sandbox` protocol from `security/` for agent isolation — but both dependencies are injected, not imported directly.
+The core module is the integration hub of HoA. It manages the agent lifecycle (init, plan, approve, run, retro, terminate), hosts the planner that decomposes tasks into DAGs, and runs the scheduler that dispatches ready tasks respecting dependency order.
 
 **Phase 0 scope:** Single-agent execution. The "agent" is a Claude Code instance launched via subprocess. The planner produces a DAG, the human approves it, and the scheduler executes tasks sequentially (parallel execution is Phase 1). No multi-tier delegation.
 
 **Relationship to `tasks/`:** The `tasks/` module owns the data model (`Task`, `TaskState`) and persistence (`TaskStore`, `DAG`). The `core/` module owns the *orchestration logic* — it uses `TaskStore` as a dependency but does not define task storage. See `src/hoa/tasks/plan.md` for the storage layer design.
+
+---
+
+## Dependencies
+
+```
+core/  →  tasks/     (TaskStore, Task, TaskState — scheduling and state management)
+       →  security/  (PermissionManifest, PermissionEnforcer — agent sandboxing)
+```
+
+**`tasks/`** is a **required dependency.** The scheduler reads and writes task state via `TaskStore`, and the planner converts `Plan` objects into `Task` records stored in the DAG.
+
+**`security/`** is an **optional dependency.** `AgentConfig` includes an optional `PermissionManifest`, and the `Scheduler` constructor accepts an optional `PermissionEnforcer`. If absent, no permission checking occurs — the scheduler still functions. The `security/` types are imported for type annotations but the module operates correctly without them at runtime (the fields default to `None`).
 
 ---
 
@@ -167,7 +180,7 @@ class RunResult(BaseModel):
 | `security/` | `PermissionManifest` (input), `PermissionEnforcer` (used by scheduler) | Scheduler checks permissions before dispatch |
 | `tasks/` | `TaskStore`, `Task`, `TaskState` | Scheduler reads/writes task state |
 
-**All dependencies are injected.** The scheduler doesn't import `inspection`, `guardrails`, or `retro` — it emits `AgentResult` objects that those modules consume. The wiring happens at the CLI layer.
+**`core/` imports from `tasks/` and `security/` directly.** The scheduler imports `TaskStore`, `Task`, and `TaskState` from `tasks/`. `AgentConfig` imports `PermissionManifest` from `security/`. Downstream consumers (`inspection/`, `guardrails/`, `retro/`) import from `core/` — they are **not** imported by `core/`. The wiring between core and downstream happens at the CLI layer.
 
 ---
 

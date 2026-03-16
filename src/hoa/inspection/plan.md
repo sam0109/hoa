@@ -8,6 +8,16 @@ The inspection module is a self-contained logging and tracing system. It capture
 
 ---
 
+## Dependencies
+
+```
+inspection/  →  (none)
+```
+
+The inspection module has **no dependencies** on other HoA modules. It is a pure sink/store — it defines `LogEvent`, `Logger`, and `TraceStore` without importing anything from `core/`, `security/`, `guardrails/`, or `retro/`. Other modules call the logger and query the trace store, but the inspection module never reaches out to them.
+
+---
+
 ## Public Interface
 
 The inspection module exposes three things: a `LogEvent` data model, a `Logger` that writes events, and a `TraceStore` that reads them back.

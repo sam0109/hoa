@@ -2,9 +2,23 @@
 
 ## Context
 
-The guardrail module is a standalone constraint enforcement engine. It evaluates agent work products against a registry of rules — deterministic checks (linters, test suites, validators) and agent checks (LLM-based evaluation). It can run independently against any code change or agent output, with no dependency on the planner, inspection layer, or security module.
+The guardrail module is a standalone constraint enforcement engine. It evaluates agent work products against a registry of rules — deterministic checks (linters, test suites, validators) and agent checks (LLM-based evaluation). The engine itself has no dependencies on other modules, but the lifecycle monitoring subsystem depends on the inspection layer to query historical guardrail trigger data.
 
 **Phase 0 scope:** Deterministic checks only (shell commands that return pass/fail). Agent checks (LLM-based evaluation) are Phase 1. The guardrail registry is a YAML file in `.hoa/guardrails/`. The engine runs checks and returns structured results.
+
+---
+
+## Dependencies
+
+```
+guardrails/engine.py     →  (none — standalone evaluation)
+guardrails/registry.py   →  (none — standalone storage)
+guardrails/lifecycle.py  →  inspection/  (TraceStore — queries GUARDRAIL_RESULT events for stats)
+```
+
+The **engine and registry** have **no dependencies** on other HoA modules. Call `engine.evaluate(context)` and get `list[GuardrailResult]` back — no inspection, no security, no planner needed.
+
+The **lifecycle manager** has an **optional dependency on `inspection/`**. It queries `TraceStore` for historical `GUARDRAIL_RESULT` events to compute trigger frequency, false-positive rates, and retirement suggestions. If no `TraceStore` is provided, the lifecycle manager still works but tracks stats in-memory only (reset each run).
 
 ---
 
@@ -173,7 +187,8 @@ class GuardrailStats(BaseModel):
 class GuardrailLifecycleManager:
     """Manages guardrail creation, monitoring, and refinement."""
 
-    def __init__(self, registry: GuardrailRegistry): ...
+    def __init__(self, registry: GuardrailRegistry, trace_store: TraceStore | None = None): ...
+        # trace_store from inspection/ — optional, used for historical stats
 
     def create_from_failure(self, *, name: str, description: str, command: str, phase: Phase, scope: Scope) -> Guardrail:
         """Create a new deterministic guardrail from a failure observation."""
